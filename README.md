@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/version-2.5.1-blue)](https://github.com/CAZAMA1/YuketangGoodbye)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Tampermonkey-orange)](https://www.tampermonkey.net/)
-[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-install-red)](https://greasyfork.org/zh-CN/scripts/YOUR_SCRIPT_ID)
+[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-install-red)](https://greasyfork.org/zh-CN/scripts/568827-%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%88%B7%E8%AF%BE-%E5%88%B7%E9%A2%98%E5%8A%A9%E6%89%8B)
 
 ---
 
@@ -52,7 +52,7 @@
 1. 安装浏览器扩展 [Tampermonkey](https://www.tampermonkey.net/)
 2. 点击下方按钮一键安装：
 
-[![Install from Greasy Fork](https://img.shields.io/badge/Install%20from-Greasy%20Fork-red?style=for-the-badge)](https://greasyfork.org/zh-CN/scripts/YOUR_SCRIPT_ID)
+[![Install from Greasy Fork](https://img.shields.io/badge/Install%20from-Greasy%20Fork-red?style=for-the-badge)](https://greasyfork.org/zh-CN/scripts/568827-%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%88%B7%E8%AF%BE-%E5%88%B7%E9%A2%98%E5%8A%A9%E6%89%8B)
 
 ### 方式二：手动安装
 
