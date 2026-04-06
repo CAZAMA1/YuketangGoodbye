@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name         雨课堂刷课+刷题助手
 // @name:zh-CN   雨课堂刷课+刷题助手
-// @namespace    https://github.com/CAZAMA1/YuketangGoodbye
+// @namespace    https://github.com/YOUR_USERNAME/YOUR_REPO
 // @version      2.5.1
 // @description  雨课堂视频自动播放、多倍速、PPT自动翻页，并支持调用 DeepSeek/Kimi/通义/OpenAI/Gemini 等大模型 OCR 识别题目并自动作答，全程挂机。
 // @description:zh-CN  雨课堂视频自动播放、多倍速、PPT自动翻页，并支持调用 DeepSeek/Kimi/通义/OpenAI/Gemini 等大模型 OCR 识别题目并自动作答，全程挂机。
 // @author       翔子酱
 // @license      GPL-3.0
-// @homepage     https://github.com/CAZAMA1/YuketangGoodbye
-// @supportURL   https://github.com/CAZAMA1/YuketangGoodbye/issues
-// @updateURL    https://raw.githubusercontent.com/CAZAMA1/YuketangGoodbye/main/main.js
-// @downloadURL  https://raw.githubusercontent.com/CAZAMA1/YuketangGoodbye/main/main.js
+// @homepage     https://github.com/YOUR_USERNAME/YOUR_REPO
+// @supportURL   https://github.com/YOUR_USERNAME/YOUR_REPO/issues
+// @updateURL    https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/main.js
+// @downloadURL  https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/main.js
 // @match        *://*.yuketang.cn/*
 // @match        *://*.gdufemooc.cn/*
 // @match        *://*.xuetangx.com/*
@@ -37,6 +37,24 @@ const basicConf = {
   version: '2.5.1',
   rate: 2, //用户可改 视频播放速率,可选值[1,1.25,1.5,2,3,16],默认为2倍速，实测4倍速往上有可能出现 bug，3倍速暂时未出现bug，推荐二倍/一倍。
   pptTime: 3000, // 用户可改 ppt播放时间，单位毫秒
+}
+
+// --- v2/web 断点续刷：解决进入学习内容后页面刷新导致脚本重置问题 ---
+function saveV2State(baseUrl, outside, inside) {
+  localStorage.setItem('ykt_v2_resume', JSON.stringify({
+    baseUrl: baseUrl,
+    outside: outside || 0,
+    inside: inside || 0
+  }));
+}
+function loadV2State() {
+  try {
+    const raw = localStorage.getItem('ykt_v2_resume');
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function clearV2State() {
+  localStorage.removeItem('ykt_v2_resume');
 }
 
 function getAIConf() {
@@ -387,7 +405,7 @@ async function fetchAnswerFromAI(ocrText) {
               }],
               generationConfig: { temperature: 0.1 }
             }),
-            timeout: 15000,
+            timeout: 30000,
             onload: function(response) {
               if (response.status === 200) {
                 try {
@@ -425,7 +443,7 @@ async function fetchAnswerFromAI(ocrText) {
               ],
               temperature: 0.1
             }),
-            timeout: 10000,
+            timeout: 30000,
             onload: function(response) {
               if (response.status === 200) {
                 try {
@@ -1184,15 +1202,25 @@ function addUserOperate() {
   minimality.addEventListener('click', enterMini);
   miniBasic.addEventListener('click', exitMini);
 
-  // 有问题按钮
+    // 有问题按钮
   question.addEventListener('click', function () {
     window.parent.alert('如遇问题请自行检查配置/网络环境。');
   });
 
-  // 刷课按钮
+  // 刷课按鈕（点击切换开始/停止）
   button.onclick = function () {
-    window.parent.start && window.parent.start();
-    button.innerText = '刷课中~';
+    if (button.innerText === '刷课中~') {
+      // 停止刷课
+      window.parent.__yktStopped = true;
+      window.parent.clearV2State && window.parent.clearV2State();
+      button.innerText = '开始刷课';
+      window.parent.$.alertMessage('⏹ 已停止刷课，点击「开始刷课」可继续');
+    } else {
+      // 开始/继续刷课
+      window.parent.__yktStopped = false;
+      window.parent.start && window.parent.start();
+      button.innerText = '刷课中~';
+    }
   };
   // 清除数据按钮
   clear.onclick = function () {
@@ -1249,10 +1277,20 @@ function yuketang_v2() {
   const baseUrl = location.href;    // 用于判断不同的课程
   let count = $.userInfo.getProgress(baseUrl).outside;  // 记录当前课程播放的外层集数
   let play = true;        // 用于标记视频是否播放完毕
+
+  // 检测是否为页面刷新后的断点恢复（进入学习内容后页面刷新导致脚本重置的修复）
+  const _v2Resume = loadV2State();
+  if (_v2Resume && _v2Resume.baseUrl === baseUrl) {
+    count = _v2Resume.outside;
+    $.alertMessage(`🔄 检测到断点，从第 ${count + 1} 个继续刷课...`);
+  }
+  clearV2State(); // 清除断点，防止正常完成后误触发
+
   $.alertMessage(`检测到已经播放到${count}集...`);
   $.alertMessage('已匹配到yuketang.cn/v2/web,正在处理...');
   // 主函数
   function main() {
+    if (window.__yktStopped) { $.alertMessage('⏹ 已停止'); return; }
     autoSlide(count).then(() => {
       const listRoot = document.querySelector('.logs-list');
       if (!listRoot) {
@@ -1301,6 +1339,7 @@ function yuketang_v2() {
         return;
       } else if (classInfo?.includes('shipin') && play === true) { // 视频处理
         play = false;
+        saveV2State(baseUrl, count, 0); // 断点保存：页面刷新后可恢复
         course.click(); // 进入课程
         setTimeout(() => {
           let progress = document.querySelector('.progress-wrap').querySelector('.text');   // 课程进度
@@ -1342,6 +1381,7 @@ function yuketang_v2() {
             $.alertMessage('第' + (count + 1) + '个：进入了批量区');
             bofang();
             function bofang() {
+              if (window.__yktStopped) { $.alertMessage('⏹ 已停止'); return; }
               let play = true;
               let classInfo1;
               let videotitle, audiotitle;
@@ -1374,6 +1414,7 @@ function yuketang_v2() {
               // $.alertMessage('批量中[' + classInfo1 + ']'); // 查找进入批量操作之后所有的类型
               if (classInfo1 == "音频" && play === true) {
                 play = false;
+                saveV2State(baseUrl, count, count1); // 断点保存
                 a[count1].click();
                 $.alertMessage(`开始播放:${audiotitle}`);
                 setTimeout(() => {
@@ -1397,6 +1438,7 @@ function yuketang_v2() {
                 }, 3000)
               } else if (classInfo1?.includes('shipin') && play === true) { // #icon-shipin
                 play = false;
+                saveV2State(baseUrl, count, count1); // 断点保存
                 a[count1].click();
                 $.alertMessage(`开始播放:${videotitle}`);
                 // 延迟3秒后加速
@@ -1423,6 +1465,7 @@ function yuketang_v2() {
                 }, 3000)
               } else if ((classInfo1?.includes('tuwen') || classInfo1?.includes('taolun')) && play === true) { // #icon-tuwen
                   play = false;
+                  saveV2State(baseUrl, count, count1); // 断点保存
                   a[count1].click(); // 进入详情页
 
                   // 获取标题用于提示当前处理是图文或者讨论
@@ -1549,6 +1592,7 @@ function yuketang_v2() {
                   })();
                 } else if (classInfo1?.includes('zuoye') && play === true) { // #icon-zuoye
                 play = false;
+                saveV2State(baseUrl, count, count1); // 断点保存
                 a[count1].click(); // 进入作业页面
 
                 (async function () {
@@ -1573,6 +1617,7 @@ function yuketang_v2() {
                 })();
                 } else if (classInfo1?.includes('kaoshi') && play === true) { // #icon-kaoshi
                 play = false;
+                saveV2State(baseUrl, count, count1); // 断点保存
                 a[count1].click();
                 $.alertMessage('进入考试测验，尝试AI作答');
 
@@ -1607,6 +1652,7 @@ function yuketang_v2() {
         }
       } else if (classInfo?.includes('zuoye') && play === true) {   // 顶层作业
         play = false;
+        saveV2State(baseUrl, count, 0); // 断点保存
         course.click();
         $.alertMessage(`第${count + 1}个：进入作业区`);
 
@@ -1633,6 +1679,7 @@ function yuketang_v2() {
       } else if (classInfo?.includes('ketang') && play === true) {    // 课堂处理
         $.alertMessage('第' + (count + 1) + '个：进入了课堂区');
         play = false;
+        saveV2State(baseUrl, count, 0); // 断点保存
         course.click();
         setTimeout(() => {
 
@@ -1690,6 +1737,7 @@ function yuketang_v2() {
           // $.alertMessage('根据ycj用户的反馈修改新增课件处理，且赞助支持，表示感谢') // 8.8元
           $.alertMessage('第' + (count + 1) + '个：进入了课件区');
           play = false;
+          saveV2State(baseUrl, count, 0); // 断点保存
           console.log();
           course.click();
           let classType;
@@ -1799,6 +1847,7 @@ function yuketang_v2() {
           return;
         }
         play = false;
+        saveV2State(baseUrl, count, 0); // 断点保存
         course.click();
         $.alertMessage(`第${count + 1}个：进入考试区`);
 
@@ -1978,6 +2027,57 @@ function yuketang_pro_lms_new() {
         $.panel.querySelector('#n_button').innerText = '刷课中~';
         localStorage.setItem('n_type', false);
         yuketang_pro_lms_new();
+      } else if (loadV2State()) {
+        // v2/web 断点恢复：进入学习内容后页面刷新，自动恢复刷课
+        const _v2State = loadV2State();
+        $.panel.querySelector('#n_button').innerText = '刷课中~';
+
+        if (location.href !== _v2State.baseUrl) {
+          // 在内容页上：直接处理，不重定向（重定向会导致无限循环）
+          clearV2State(); // 立即清除，防止重复触发
+          $.alertMessage('🔄 断点恢复：在内容页直接处理...');
+
+          (async () => {
+            const delay = ms => new Promise(r => setTimeout(r, ms));
+
+            // 等待媒体元素加载（最多10秒）
+            let media = null;
+            for (let i = 0; i < 20; i++) {
+              media = document.querySelector('video') || document.querySelector('audio');
+              if (media) break;
+              await delay(500);
+            }
+
+            if (media) {
+              const isVideo = media.tagName === 'VIDEO';
+              $.alertMessage(`检测到${isVideo ? '视频' : '音频'}，开始播放并追踪进度...`);
+              if (isVideo) $.videoDetail(media); else $.audioDetail(media);
+
+              // 追踪进度直到完成
+              while (true) {
+                await delay(5000);
+                const progressEl = document.querySelector('.progress-wrap .text') ||
+                                   document.querySelector('.progress-wrap')?.querySelector('.text');
+                if (progressEl && /100%|99%|98%|已完成/.test(progressEl.innerHTML)) {
+                  $.alertMessage('媒体播放完毕，返回课程列表...');
+                  break;
+                }
+                if (!media.ended && media.paused) media.play().catch(() => {});
+              }
+            } else {
+              // 非媒体内容（图文/讨论等），稍作等待后跳过
+              $.alertMessage('未检测到媒体，3秒后跳过此内容并返回...');
+              await delay(3000);
+            }
+
+            // 完成后更新进度（count+1）并返回课程列表
+            saveV2State(_v2State.baseUrl, _v2State.outside + 1, _v2State.inside);
+            location.href = _v2State.baseUrl;
+          })();
+        } else {
+          // URL 一致（已在列表页），直接恢复
+          start();
+        }
       }
       clearInterval(listenDom);
     }
