@@ -473,8 +473,8 @@ async function autoSelectAndSubmit(aiResponse, itemBodyElement) {
     const match = aiResponse.match(/(?:正确)?答案[：:]?\s*([A-F]+(?:[,，][A-F]+)*|[对错]|正确|错误)/i);
 
     if (!match) {
-        $.alertMessage("❌ 未提取到有效选项，请人工检查");
-        return;
+        $.alertMessage("未提取到有效选项，请人工检查");
+        return false;
     }
 
     let answerRaw = match[1].replace(/[,，]/g, '').trim();
@@ -492,7 +492,10 @@ async function autoSelectAndSubmit(aiResponse, itemBodyElement) {
         }
     }
 
-    if (targetIndices.length === 0) return;
+    if (targetIndices.length === 0) {
+        $.alertMessage("AI答案中没有有效选项");
+        return false;
+    }
 
     $.alertMessage(`✅ AI建议选择: ${answerRaw}`);
 
@@ -503,16 +506,16 @@ async function autoSelectAndSubmit(aiResponse, itemBodyElement) {
                         itemBodyElement.querySelector('ul.list');
 
     if (!listContainer) {
-        $.alertMessage("❌ 未找到选项列表容器");
-        return;
+        $.alertMessage("未找到选项列表容器");
+        return false;
     }
     // 获取所有选项 li
     const options = listContainer.querySelectorAll('li');
 
-    // 4. 执行点击
+    // 4. 执行点击，并记录实际成功点击的选项数
+    let clickedCount = 0;
     for (let index of targetIndices) {
         if (options[index]) {
-            // 【核心修改】精准定位点击目标
             // 优先查找 Element UI 的 label 包装器 (el-radio 或 el-checkbox)
             // 其次查找 文字标签 (el-radio__label)
             // 最后查找 input 本身
@@ -525,10 +528,16 @@ async function autoSelectAndSubmit(aiResponse, itemBodyElement) {
 
             if (clickable) {
                 clickable.click();
+                clickedCount++;
                 // 多选题防抖延迟
                 await new Promise(r => setTimeout(r, 300));
             }
         }
+    }
+
+    if (clickedCount !== targetIndices.length) {
+        $.alertMessage(`选项点击不完整：需要 ${targetIndices.length} 个，实际点击 ${clickedCount} 个`);
+        return false;
     }
 
     // 5. 点击提交按钮
@@ -559,12 +568,14 @@ async function autoSelectAndSubmit(aiResponse, itemBodyElement) {
         }
     }
 
-    if (submitBtn) {
-        $.alertMessage("正在提交...");
-        submitBtn.click();
-    } else {
-        $.alertMessage("⚠️ 未找到提交按钮,请手动提交。");
+    if (!submitBtn) {
+        $.alertMessage("未找到提交按钮,请手动提交。");
+        return false;
     }
+
+    $.alertMessage("正在提交...");
+    submitBtn.click();
+    return true;
 }
 
 // --- 通用作业/测验处理流程 ---
@@ -639,6 +650,7 @@ async function solveAssessment({ label = '作业', navSelectors, contentSelector
     throw new Error(`${label}题目未加载，无法识别`);
   }
 
+  const failedQuestions = new Set();
   let index = 0;
   while (true) {
     let currentList = [];
@@ -689,26 +701,44 @@ async function solveAssessment({ label = '作业', navSelectors, contentSelector
     }
 
     if (targetEl) {
-      $.alertMessage(`正在处理${label}第 ${index + 1} 题...`);
+      const questionNumber = index + 1;
+      $.alertMessage(`正在处理${label}第 ${questionNumber} 题...`);
       const ocrResult = await recognizeTextFromElement(targetEl);
       const preview = (ocrResult || '').substring(0, 16);
-      $.alertMessage(`${label}第 ${index + 1} 题识别: ${preview}...`);
-      if (ocrResult && ocrResult.length > 5) {
+      $.alertMessage(`${label}第 ${questionNumber} 题识别: ${preview}...`);
+
+      if (!ocrResult || ocrResult.length <= 5 || ocrResult === 'OCR识别出错') {
+        failedQuestions.add(questionNumber);
+        $.alertMessage(`❌ ${label}第 ${questionNumber} 题 OCR 识别失败`);
+      } else {
         try {
           $.alertMessage('🤖 正在请求AI获取答案...');
           const aiResponse = await fetchAnswerFromAI(ocrResult);
-          await autoSelectAndSubmit(aiResponse, targetEl);
+          const selectedSuccessfully = await autoSelectAndSubmit(aiResponse, targetEl);
+
+          if (!selectedSuccessfully) {
+            failedQuestions.add(questionNumber);
+            $.alertMessage(`❌ ${label}第 ${questionNumber} 题未能成功选择答案`);
+          }
         } catch (err) {
-          $.alertMessage(`${label}AI答题失败: ${err}`);
+          failedQuestions.add(questionNumber);
+          $.alertMessage(`${label}第 ${questionNumber} 题 AI 答题失败: ${err}`);
           console.error(err);
         }
       }
     } else {
+      failedQuestions.add(index + 1);
       $.alertMessage(`⚠️ 未找到${label}第 ${index + 1} 题内容区域`);
     }
 
     await delay(2000);
     index++;
+  }
+
+  if (failedQuestions.size > 0) {
+    const failedList = Array.from(failedQuestions).join('、');
+    $.alertMessage(`⛔ 第 ${failedList} 题处理失败，已取消自动提交${label}`);
+    throw new Error(`${label}存在处理失败的题目：${failedList}`);
   }
 
   const finalBtn = Array.from(document.querySelectorAll('button.el-button--primary, button'))
